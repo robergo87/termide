@@ -1,0 +1,20 @@
+#!/usr/bin/python3
+
+import socket
+import os
+import sys
+import json
+
+if not os.environ.get("TERMIDE_PIPE_PATH"):
+    print("TERMIDE_PIPE_PATH not set")
+    os.exit()
+    
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+client.connect(os.environ.get("TERMIDE_PIPE_PATH"))
+client.send(json.dumps(sys.argv[1:]).encode("utf-8"))
+resp = client.recv(2048).decode("utf-8")
+if resp:
+    print(resp)
+client.close()
+
+
