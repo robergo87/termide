@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import os
 import io
 import gi
@@ -66,9 +68,10 @@ class TermTabs(Gtk.Box):
         term = Terminal(title, directory, commands)
         term.prnt = self
         term.termno = len(self.terminals)
-        term.show()
         self.terminals.append(term)
         self.stack.add_titled(term, str(len(self.terminals)), title)
+        term.show()
+        return term
 
     def rem_terminal(self, termno):
         term = self.terminals[termno]
@@ -88,7 +91,7 @@ class TermTabs(Gtk.Box):
         #switcher
         self.switcher = Gtk.StackSwitcher()
         self.switcher.set_stack(self.stack)
-        #self.switcher.show()
+        self.switcher.show()
         #mount
         self.pack_start(self.switcher, False, True, 0)
         self.pack_start(self.stack, True, True, 0)        
@@ -99,7 +102,6 @@ class TermTabs(Gtk.Box):
         self.ide = None
         self.tabno = -1
         self.connect("focus-in-event", self.event_focus_in)
-        #self.connect("clicked", self.event_focus_in)
         
     def get_tabs(self):
         return [self]
@@ -146,10 +148,12 @@ class TermSplit(Gtk.Paned):
         if tab.pos == "first":
             self.first = TermSplit(oldtab, newtab, orient)
             self.pack1(self.first, True, True)
+            self.first.pos = "first"
             self.first.show()
         else:   
             self.last = TermSplit(oldtab, newtab, orient)
             self.pack2(self.last, True, True)
+            self.last.pos = "last"
             self.last.show()
         self.set_position(lastpos)
     
@@ -159,13 +163,12 @@ class TermSplit(Gtk.Paned):
         ide = self.get_toplevel()
         if obj.pos == "first":
             self.get_parent().replace_obj(self, self.last)
+            ide.server.current_tab = 0            
         else:
             self.get_parent().replace_obj(self, self.first)
             ide.server.current_tab -= 1
         ide.recreate_tabs()
-        child = ide.tabs[ide.server.current_tab].stack.get_visible_child()
-        if child:
-            child.grab_focus()
+        ide.tabs[ide.server.current_tab].stack.get_visible_child().grab_focus()
     
     def replace_obj(self, oldobj, newobj):
         self.remove(oldobj)
@@ -221,7 +224,7 @@ class TermIDE(Gtk.Window):
             "TERMIDE_PIPE_PATH": PIPE_PATH,
             "PATH": os.environ["PATH"] + os.pathsep + os.path.join(ROOT_DIR, "script")
         }
-        subprocess.run(action ,  env=env)
+        subprocess.run(action ,  env=env, close_fds=True)
              
     def event_keypress(self, widget, event):
         #decode keycode
@@ -303,8 +306,9 @@ class SocketServer:
             except Exception as e:
                 import traceback
                 retval = [str(traceback.format_exc())]
-            conn.send( ("\n".join(retval) if retval else "").encode("utf-8") )
+            conn.send( ("\n".join(str(row) for row in retval) if retval else "").encode("utf-8") )
             conn.close()
+            #self.ide.queue_draw()
         return False
               
     def start(self):
@@ -316,14 +320,15 @@ class SocketServer:
         self.ide.tabs[self.current_tab].stack.get_visible_child().grab_focus()
         return []
         
-    def command_split(self, direction="v"):
-        self.ide.tabs[self.current_tab].split(orient=direction)
+    def command_split(self, direction="v", tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        tab.split(orient=direction)
         self.ide.recreate_tabs()
-        self.ide.tabs[self.current_tab].stack.get_visible_child().grab_focus()
+        tab.stack.get_visible_child().grab_focus()
         return []
 
-    def command_close(self, direction="v"):
-        tab = self.ide.tabs[self.current_tab]
+    def command_close(self, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
         tab.get_parent().remove_tab(tab)
         return []
 
@@ -379,10 +384,84 @@ class SocketServer:
         self.ide.keybinds[keycode].append(action)    
         return []
 
-    def command_resize(self, step_x, step_y):
-        self.ide.tabs[self.current_tab].get_parent().resize(int(step_x), int(step_y))
+    def command_server_address(self):
+        return [PIPE_PATH]
+
+    def command_resize(self, step_x, step_y, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        tab.get_parent().resize(int(step_x), int(step_y))
+
+    def command_term_add(self, title, command=None, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        terminal = tab.add_terminal(title, commands=[command] if command else None)
+        tab.stack.set_visible_child(terminal)
+        return []   
+
+    def command_term_select(self, termnum, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        term = tab.terminals[int(termnum)]
+        tab.stack.set_visible_child(term)
+        term.grab_focus()
+
+    def command_term_num(self, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        curterm = tab.stack.get_visible_child()
+        for i, term in enumerate(tab.terminals):
+            if term == curterm:
+                return [i] 
+        return [-1]
     
+    def command_term_next(self, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        termnum = self.command_term_num()[0]
+        if termnum + 1 >= len(tab.terminals):
+            return [-1]
+        termnum += 1
+        self.command_term_select(termnum)
+        return [termnum]
+
+    def command_term_prev(self, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        termnum = self.command_term_num()[0]
+        if termnum <= 0:
+            return [s-1]
+        termnum -= 1
+        self.command_term_select(termnum)
+        return [termnum]
     
+    def command_term_list(self, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        return [term.title for term in tab.terminals]
+
+    def command_term_close(self, termnum=-1, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        term = (
+            tab.terminals[termnum] 
+            if termnum != -1 
+            else tab.stack.get_visible_child()
+        )
+        tab.stack.remove(term)
+        return []
+
+    def command_term_scale(self, change=0, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        term = tab.stack.get_visible_child() 
+        term.set_font_scale(term.get_font_scale()+float(change))
+        return [term.get_font_scale()]        
+
+    def command_term_set_scale(self, val=0, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        term = tab.stack.get_visible_child() 
+        term.set_font_scale(float(val))
+        return [term.get_font_scale()]        
+
+    def command_term_feed(self, val="", tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else tabno] 
+        term = tab.stack.get_visible_child() 
+        term.feed(val)
+        return []        
+
+
 ide = TermIDE()  
 server = SocketServer(ide)
 server.start()
