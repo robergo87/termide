@@ -1,0 +1,30 @@
+:colorscheme ron
+:set nu
+:set tabstop=4 shiftwidth=4
+
+imap <F3> <Esc>:tabp<CR>a
+imap <F4> <Esc>:tabn<CR>a
+map <F3> :tabp<CR>
+map <F4> :tabn<CR>
+
+set selectmode=mouse,key
+nmap <F5> gh
+imap <F5> <Esc>gh
+vmap <F5> <Esc>gh
+
+imap <F6> <Esc>gpa
+nmap <F6> gp
+
+vmap . >gv<Esc>
+vmap , <gv<Esc>
+
+vmap c ygv<Esc>
+vmap x d
+vmap v <Esc>gp
+nmap v gp
+nmap z :undo<CR>
+
+imap <F2> <Esc>:w<CR>a
+nmap <F2> <Esc>:w<CR>
+vmap <F2> <Esc>:w<CR>v
+

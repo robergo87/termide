@@ -1,0 +1,14 @@
+[{
+  "Name": "robergo-tab",
+  "Description": "tab plugin, open in tab only when file is not in tabs",
+  "Tags": ["colorscheme"],
+  "Versions": [
+    {
+      "Version": "0.1.0",
+      "Url": "https://github.com/theodus/monokai-dark/archive/0.1.0.zip",
+      "Require": {
+        "micro": ">=1.1.3"
+      }
+    }
+  ]
+}]
