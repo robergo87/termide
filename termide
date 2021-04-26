@@ -1,0 +1,18 @@
+#!/usr/bin/python3
+import os
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version('Vte', '2.91')
+
+from gi.repository import Gtk
+
+from includes.api import SocketServer
+from includes.window import TermIDE
+from includes.util import ROOT_DIR
+
+ide = TermIDE()  
+server = SocketServer(ide)
+server.start()
+ide.shell_exec( [os.path.join(ROOT_DIR, "templates", "default.sh")] )
+Gtk.main()

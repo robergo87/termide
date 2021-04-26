@@ -54,13 +54,26 @@ if [ "$1" = "history" ]; then
 	echo "$($line)"
 fi
 
+if [ "$1" = "popup" ]; then
+	shift
+	$PDIR/popup "$@"
+fi
+
+if [ "$1" = "fm" ]; then
+	action=`$PDIR/includes/fm.py actions | $PDIR/fzf/fzf/bin/fzf \
+	    --layout reverse-list --delimiter ";" --with-nth -1 --ansi`
+	$PDIR/includes/fm.py "$action" "$2"
+fi
+
 curdir="$(pwd)"
 pid="$$"
 
 if [ "$1" = "tree" ]; then
-    python3 $PDIR/includes/tree.py "$pid" init . "$2" "$3" &
+    python3 $PDIR/includes/tree.py "$pid" init . \
+    "termide term_add '$2' '{file}' '[\"$PDIR/script/tih\", \"micro\", \"{path}\"]'; termide tab '$2'" \
+    "$PDIR/script/tih popup '{path}' . '$PDIR/script/tih' fm '{path}'" &
     sleep 1
     python3 $PDIR/includes/tree.py "$pid" list | $PDIR/fzf/fzf/bin/fzf  --layout reverse-list --delimiter ";" --with-nth -1 --ansi \
-    --bind "enter:reload(python3 $PDIR/includes/tree.py $pid select {})"
+    --bind "enter:reload(python3 $PDIR/includes/tree.py "$pid" select {}),space:reload(python3 $PDIR/includes/tree.py "$pid" alternative {})"
     python3 $PDIR/includes/tree.py "$pid" stop
 fi

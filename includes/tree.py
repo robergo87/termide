@@ -9,6 +9,10 @@ pid = sys.argv[1]
 action = sys.argv[2]
 server_path = "/tmp/tree-{}".format(pid)
 
+def error_log(msg):
+    with open("/tmp/tree-debug-{}".format(pid), "a") as f:
+        f.write(str(msg)+"\n")
+
 # ------------ client side ------------------
 
 if action != "init":
@@ -66,6 +70,21 @@ class Actions:
         os.system(cmd_default.format(path=fullpath, file=basename))         
         return Actions.action_list()
 
+    def action_alternative(path):
+        fullpath = os.path.abspath(path.split(";")[0].strip())
+        if os.path.isdir(fullpath):
+            if fullpath not in opendirs:
+                opendirs.add(fullpath)
+            else:
+                opendirs.remove(fullpath)
+            return Actions.action_list()   
+        if not cmd_default:
+            return Actions.action_list()
+        basename = os.path.basename(fullpath)
+        os.system(cmd_optional.format(path=fullpath, file=basename))         
+        return Actions.action_list()
+
+
     def listdir(path, indent):
         files = []
         dirs = []
@@ -96,27 +115,35 @@ class Actions:
         return "\n".join(dirtree)
         
         
+
 # ----- main loop ----
-while True:
-    server.listen(1)
-    conn, addr = server.accept()
-    message = conn.recv(1024)
-    if not message:
-        continue
-    msg = json.loads(message)
-    if msg[0] == "stop":
-        break
-    if not hasattr(Actions, "action_{}".format(msg)):
-        retval = "no such action\n"
-    try:
-        action_name = "action_{}".format(msg[0])
-        retval = getattr(Actions, action_name)(*msg[1:])
-        if not retval:
-            retval = "\n"
-    except Exception as e:
-        import traceback
-        retval = "{}\n{}\n".format(str(e), str(traceback.format_exc()))
-    conn.send(retval.encode("utf-8"))
-    conn.close()
+try:
+    while True:
+        server.listen(1)
+        conn, addr = server.accept()
+        message = conn.recv(1024)
+        if not message:
+            continue
+        msg = json.loads(message)
+        error_log(msg)
+        if msg[0] == "stop":
+            break
+        if not hasattr(Actions, "action_{}".format(msg)):
+            retval = "no such action\n"
+        try:
+            action_name = "action_{}".format(msg[0])
+            retval = getattr(Actions, action_name)(*msg[1:])
+            if not retval:
+                retval = "\n"
+        except Exception as e:
+            import traceback
+            retval = "{}\n{}\n".format(str(e), str(traceback.format_exc()))
+        conn.send(retval.encode("utf-8"))
+        conn.close()
+except Exception as e:
+    import traceback
+    retval = "{}\n{}\n".format(str(e), str(traceback.format_exc()))
+    error_log(retval)
+
 server.close()
 os.remove(server_path)

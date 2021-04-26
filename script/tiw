@@ -1,0 +1,73 @@
+#! /usr/bin/python3
+import sys, os
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk, Gio
+
+title = "Test"
+
+parent_window = Gtk.Window()
+
+dialog_window = Gtk.Dialog(transient_for=parent_window, title=title, flags=0)
+dialog_window.add_buttons(
+    Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, 
+    Gtk.STOCK_OK, Gtk.ResponseType.OK
+)
+dialog_window.set_default_size(300, 100)
+box = dialog_window.get_content_area()
+box.show()
+box.set_spacing(6)
+dialog_window.show_all()
+
+if len(sys.argv) <= 1:
+    print("Missing window type")
+    sys.exit(1)
+#
+# ------------- ALERT WINDOW ---------------#
+#
+if sys.argv[1] == "alert":
+    label_str = sys.argv[2] if len(sys.argv) > 2 else ""
+    label = Gtk.Label(label=label_str)
+    label.show()
+    box.add(label)
+    response = dialog_window.run()
+    if response == Gtk.ResponseType.OK:
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
+#
+# ------------- PROMPT WINDOW ---------------#
+#
+if sys.argv[1] == "prompt":
+    print(int(Gtk.ResponseType.OK))
+    label_str = sys.argv[2] if len(sys.argv) > 2 else ""
+    buffer_str = sys.argv[3] if len(sys.argv) > 3 else ""
+    label = Gtk.Label(label=label_str)
+    label.show()
+    box.add(label)
+    entry = Gtk.Entry()
+    box.add(entry)
+    entry.show()
+    entry.grab_focus()
+    buffer = entry.get_buffer()
+    def update_text(*args):
+        buffer_str = buffer.get_text()
+    buffer.set_text(buffer_str, len(buffer_str)-1)
+    #entry.do_insert_at_cursor(buffer_str)
+    buffer.connect('inserted-text', update_text)
+    buffer.connect('deleted-text', update_text)
+    def enter_handler(*args):
+        dialog_window.response(Gtk.ResponseType.OK)
+    entry.connect("activate", enter_handler)
+       
+    response = dialog_window.run()
+    if response == Gtk.ResponseType.OK:
+        print(buffer_str, end="")
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
+
+

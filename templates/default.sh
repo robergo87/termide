@@ -16,7 +16,7 @@ termide bind Control+Shift+Down termide resize 0 10
 termide bind Control+Shift+Less termide term_prev
 termide bind Control+Shift+Greater termide term_next
 termide bind Control+Shift+X termide term_close
-termide bind Control+Shift+N termide term_add default
+termide bind Control+Shift+N termide term_add
 
 termide bind Control+Shift+A termide term_scale +0.1
 termide bind Control+Shift+Z termide term_scale -0.1
