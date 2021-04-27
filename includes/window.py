@@ -39,14 +39,25 @@ class Terminal(Vte.Terminal):
         self.connect("eof", self.event_eof)
         self.connect("focus_in_event", self.event_focus)
         self.termno = -1
-
+        self.tid = None
+        self.add_tick_callback(self.tick_cb)
+        
     def event_eof(self, event):
         self.prnt.rem_terminal(self.termno)
 
     def event_focus(self, *args):
         self.prnt.tab_focused()
 
+    def getcwd(self):
+        try:
+            return "/"+"/".join(self.get_current_directory_uri().split("/")[3:])
+        except:
+            return None
 
+    def tick_cb(self, *args):
+        self.prnt.tick_cb()
+            
+            
 class SingleTerminalWindow(Gtk.Window):
     def __init__(self, title="TERMIDE", directory=None, commands=[]):
         super().__init__(title=title)
@@ -67,14 +78,21 @@ class SingleTerminalWindow(Gtk.Window):
 
     def tab_focused(self):
         pass
+
+    def tick_cb(self, *args):
+        pass
         
 class TermTabs(Gtk.Box):
     def add_terminal(self, title, directory=None, commands=[]):
         title = title if title else "Default"
+        scale = 1
         if not directory and self.terminals:
             term = self.stack.get_visible_child()
-            directory = term.get_current_directory_uri()
+            directory = term.getcwd()
+            scale = term.get_font_scale()
         term = Terminal(title, directory, commands)
+        if scale != 1:
+            term.set_font_scale(scale)
         term.prnt = self
         term.termno = len(self.terminals)
         self.terminals.append(term)
@@ -82,12 +100,16 @@ class TermTabs(Gtk.Box):
         term.show()
         if len(self.terminals) > 1:
             self.switcher.show()
-
+        self.add_tick_callback(self.tick_cb)
         return term
+
+    def tick_cb(self, *args):
+        self.get_parent().tick_cb()
 
     def rem_terminal(self, termno):
         term = self.terminals[termno]
         self.stack.remove(term)
+        term.destroy()
         del self.terminals[termno]
         if not self.terminals:
             self.get_parent().remove_tab(self)
@@ -115,6 +137,7 @@ class TermTabs(Gtk.Box):
         self.ide = None
         self.tabno = -1
         self.connect("focus-in-event", self.event_focus_in)
+        self.add_tick_callback(self.tick_cb)
         
     def get_tabs(self):
         return [self]
@@ -122,8 +145,7 @@ class TermTabs(Gtk.Box):
     def split(self, title=None, directory=None, commands=[], orient="v"):
         term = self.stack.get_visible_child()
         if not directory:
-            directory = term.get_current_directory_uri()
-            print(directory)
+            directory = term.getcwd()
         self.get_parent().split(self, title, directory, commands, orient)
 
     def event_focus_in(self):
@@ -133,6 +155,11 @@ class TermTabs(Gtk.Box):
     def tab_focused(self):
         if self.ide:
             self.ide.tab_focused(self.tabno)
+            
+    def curterm(self):
+        if len(self.terminals) == 1:
+            return self.terminals[0]
+        return self.stack.get_visible_child()
 
 class TermSplit(Gtk.Paned):
     def __init__(self, tabfirst, tablast, orient="v"):
@@ -153,6 +180,10 @@ class TermSplit(Gtk.Paned):
         self.show()
         self.first.show()
         self.last.show()
+        self.add_tick_callback(self.tick_cb)
+
+    def tick_cb(self, *args):
+        self.get_parent().tick_cb()
 
     def get_tabs(self):
         return self.first.get_tabs() + self.last.get_tabs()
@@ -160,6 +191,7 @@ class TermSplit(Gtk.Paned):
     def split(self, tab, title=None, directory=None, commands=[], orient="v"):
         oldtab = self.first if tab.pos == "first" else self.last
         newtab = TermTabs(title, directory, commands)
+        newtab.terminals[0].set_font_scale(oldtab.curterm().get_font_scale())
         self.remove(oldtab)
         lastpos = self.get_position()
         if tab.pos == "first":
@@ -211,6 +243,29 @@ class TermSplit(Gtk.Paned):
             self.get_parent().resize(step_x, step_y)
         return True
 
+    def resize_first(self, step_x, step_y):
+        if step_x and self.orient == "h":
+            self.set_position(step_x)
+            step_x = 0
+        if step_y and self.orient == "v":
+            self.set_position(step_y)
+            step_y = 0
+        if step_x or step_y:
+            self.get_parent().resize_last(step_x, step_y)
+        return True
+
+    def resize_last(self, step_x, step_y):
+        print(self.get_position())
+        if step_x and self.orient == "h":
+            self.set_position(self.get_allocation().width - step_x)
+            step_x = 0
+        if step_y and self.orient == "v":
+            self.set_position(self.get_allocation().height - step_y)
+            step_y = 0
+        if step_x or step_y:
+            self.get_parent().resize_last(step_x, step_y)
+        return True
+
 
 class TermIDE(Gtk.Window):
     def recreate_tabs(self):
@@ -225,17 +280,42 @@ class TermIDE(Gtk.Window):
         self.connect("destroy", self.event_destroy)
         self.connect("key_press_event", self.event_keypress)
         self.resize(900, 600)
-        self.content = TermTabs("default")
-        self.add(self.content)
-        self.content.show()
-        self.content.prnt = self
-        self.show()
-        self.recreate_tabs()
+        self.content = None
+        self.reset()
         self.pos = ""
         self.server = None
         self.pipe_path = "tmp/{}.termide".format(os.getpid())
         self.keybinds = {}
-        self.set_opacity(0.95)
+        self.show()
+        self.add_tick_callback(self.tick_cb)
+        self.update_cb = []
+
+    def reset(self):
+        if self.content:
+            self.remove(self.content)
+            self.content.destroy()
+        self.content = TermTabs("default")
+        self.add(self.content)
+        self.content.show()
+        self.content.prnt = self
+        self.recreate_tabs()
+        
+    def update_tick(self, callback, params):
+        self.update_cb.append((callback, params))
+        
+    def tick_cb(self, *args):
+        if self.update_cb:
+            self.update_cb[0][0](*self.update_cb[0][1])
+            self.update_cb = self.update_cb[1:]
+    
+    def resize(self, step_x, step_y):
+        pass
+
+    def resize_first(self, step_x, step_y):
+        pass
+
+    def resize_last(self, step_x, step_y):
+        pass
 
     def shell_exec(self, action):
         env = {
@@ -280,7 +360,7 @@ class TermIDE(Gtk.Window):
     def tab_focused(self, curtabno):
         self.server.current_tab = curtabno
         for tabno, tab in enumerate(self.tabs):
-            tab.set_opacity(1 if curtabno == tabno else 0.6)
+            tab.set_opacity(1 if curtabno == tabno else 0.7)
 
     def remove_tab(self, obj):
         self.event_destroy()

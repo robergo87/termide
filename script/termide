@@ -4,6 +4,7 @@ import socket
 import os
 import sys
 import json
+from time import sleep
 
 if not os.environ.get("TERMIDE_PIPE_PATH"):
     print("TERMIDE_PIPE_PATH not set")
@@ -15,6 +16,7 @@ client.send(json.dumps(sys.argv[1:]).encode("utf-8"))
 resp = client.recv(2048).decode("utf-8")
 if resp:
     print(resp)
+sleep(0.1)
 client.close()
 
 

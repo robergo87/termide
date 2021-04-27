@@ -1,8 +1,7 @@
 #!/bin/bash
 
 DIR="$(dirname $(readlink -f $0))"
-PDIR="$(dirname $DIR)" 
-echo $PDIR
+PDIR="$(dirname $DIR)"
 
 if [ "$1" = "install" ]; then
 	cd "$PDIR/micro"
@@ -65,12 +64,18 @@ if [ "$1" = "fm" ]; then
 	$PDIR/includes/fm.py "$action" "$2"
 fi
 
+if [ "$1" = "tpl" ]; then
+    TPLPATH="$PDIR/templates/$2.sh"
+    shift 2
+    $TPLPATH "@$"
+fi
+
 curdir="$(pwd)"
 pid="$$"
 
 if [ "$1" = "tree" ]; then
     python3 $PDIR/includes/tree.py "$pid" init . \
-    "termide term_add '$2' '{file}' '[\"$PDIR/script/tih\", \"micro\", \"{path}\"]'; termide tab '$2'" \
+    "termide term_get '$2' '{path}' '{file}' '[\"$PDIR/script/tih\", \"micro\", \"{path}\"]'; termide tab '$2'" \
     "$PDIR/script/tih popup '{path}' . '$PDIR/script/tih' fm '{path}'" &
     sleep 1
     python3 $PDIR/includes/tree.py "$pid" list | $PDIR/fzf/fzf/bin/fzf  --layout reverse-list --delimiter ";" --with-nth -1 --ansi \

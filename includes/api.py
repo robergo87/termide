@@ -8,7 +8,7 @@ import json
 import socket
 import subprocess
 import shlex
-
+from time import sleep
 
 from .util import PIPE_PATH, ROOT_DIR, bash, shlex_join, send_command
 
@@ -23,7 +23,7 @@ class SocketServer:
         self.current_tab = 0
         self.ide = ide
         self.ide.server = self
-        
+    
     def __del__(self):
         self.server.close()
         os.remove(PIPE_PATH)
@@ -38,14 +38,27 @@ class SocketServer:
             args = json.loads(message.decode("utf-8"))
             if not len(args) or args[0] == "stop":
                 break
+            comm_method = "command_{}".format(args[0])
             try: 
-                retval = getattr(self, "command_{}".format(args[0]))(*args[1:])
+                if hasattr(self, comm_method):
+                    retval = getattr(self, comm_method)(*args[1:])
+                    retval = "\n".join(str(row) for row in retval) if retval else ""
+                    conn.send(retval.encode("utf-8"))
+                    conn.close()
+                else:
+                    print("{} start".format(comm_method))
+                    retval = getattr(self, comm_method+"_async")(*args[1:])
+                    def conn_close(retval):
+                        retval = "\n".join(str(row) for row in retval) if retval else ""
+                        conn.send(retval.encode("utf-8"))
+                        conn.close()
+                        print("{} end".format(comm_method))
+                    self.ide.update_tick(conn_close, [retval])
             except Exception as e:
                 import traceback
                 retval = [str(traceback.format_exc())]
-            conn.send( ("\n".join(str(row) for row in retval) if retval else "").encode("utf-8") )
-            conn.close()
-            #self.ide.queue_draw()
+                retval = "\n".join(str(row) for row in retval) if retval else ""
+                conn.send(retval.encode("utf-8"))   
         return False
               
     def start(self):
@@ -54,23 +67,23 @@ class SocketServer:
 
     def command_tab(self, current_tab):
         self.current_tab = int(current_tab)
-        self.ide.tabs[self.current_tab].stack.get_visible_child().grab_focus()
+        self.ide.tabs[self.current_tab].curterm().grab_focus()
         return []
         
-    def command_split(self, direction="v", tabno=-1):
+    def command_split_async(self, direction="v", tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         tab.split(orient=direction)
         self.ide.recreate_tabs()
-        tab.stack.get_visible_child().grab_focus()
+        tab.curterm().grab_focus()
         return []
 
-    def command_close(self, tabno=-1):
+    def command_close_async(self, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         tab.get_parent().remove_tab(tab)
         return []
 
     def command_quit(self):
-        Gtk.main_quit()
+        self.ide.event_destroy()
         return []
 
     def command_move(self, direction="r"):
@@ -111,9 +124,6 @@ class SocketServer:
 
     def command_echo(self, *args):
         return list(args)
-            
-    def command_server_address(self):
-        return [PIPE_PATH]
         
     def command_bind(self, keycode, *action):
         if not keycode in self.ide.keybinds:
@@ -121,19 +131,41 @@ class SocketServer:
         self.ide.keybinds[keycode].append(action)    
         return []
 
-    def command_server_address(self):
-        return [PIPE_PATH]
-
     def command_resize(self, step_x, step_y, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         tab.get_parent().resize(int(step_x), int(step_y))
 
-    def command_term_add(self, tabno=-1, title="default", command=None):
+    def command_resize_first(self, step_x, step_y, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
+        tab.get_parent().resize_first(int(step_x), int(step_y))
+
+    def command_resize_last(self, step_x, step_y, tabno=-1):
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
+        tab.get_parent().resize_last(int(step_x), int(step_y))
+        
+    def command_term_add_async(self, tabno=-1, title="default", command=None):
         command_lst = json.loads(command) if command else []
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)]
         terminal = tab.add_terminal(title, commands=command_lst if command else None)
         tab.stack.set_visible_child(terminal)
         return []   
+
+    def command_term_get(self, tabno=-1, tid="", title="default", command=None):
+        command_lst = json.loads(command) if command else []
+        tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)]
+        terminal = None
+        for term in tab.terminals:
+            if getattr(term, "tid") == tid:
+                terminal = term
+                break
+        if not terminal:
+            terminal = tab.add_terminal(
+                title, commands=command_lst if command else None
+            )
+            terminal.tid = tid
+        tab.stack.set_visible_child(terminal)
+        return []   
+
 
     def command_term_select(self, termnum, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
@@ -149,7 +181,7 @@ class SocketServer:
                 return [i] 
         return [-1]
     
-    def command_term_next(self, tabno=-1):
+    def command_term_next_async(self, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         termnum = self.command_term_num()[0]
         if termnum + 1 >= len(tab.terminals):
@@ -158,11 +190,11 @@ class SocketServer:
         self.command_term_select(termnum)
         return [termnum]
 
-    def command_term_prev(self, tabno=-1):
+    def command_term_prev_async(self, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         termnum = self.command_term_num()[0]
         if termnum <= 0:
-            return [s-1]
+            return [-1]
         termnum -= 1
         self.command_term_select(termnum)
         return [termnum]
@@ -171,10 +203,10 @@ class SocketServer:
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         return [term.title for term in tab.terminals]
 
-    def command_term_close(self, termnum=-1, tabno=-1):
+    def command_term_close_async(self, termnum=-1, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         term = (
-            tab.terminals[termnum] 
+            tab.terminals[int(termnum)] 
             if termnum != -1 
             else tab.stack.get_visible_child()
         )
@@ -183,20 +215,21 @@ class SocketServer:
 
     def command_term_scale(self, change=0, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
-        term = tab.stack.get_visible_child() 
-        term.set_font_scale(term.get_font_scale()+float(change))
+        for term in tab.terminals:
+            term.set_font_scale(term.get_font_scale()+float(change))
         return [term.get_font_scale()]        
 
-    def command_term_set_scale(self, val=0, tabno=-1):
+    def command_term_set_scale_async(self, val=0, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
-        term = tab.stack.get_visible_child() 
-        term.set_font_scale(float(val))
+        for term in tab.terminals:
+            term.set_font_scale(float(val))
         return [term.get_font_scale()]        
 
-    def command_term_feed(self, tabno, val=""):
+    def command_term_feed(self, val="", tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         term = tab.stack.get_visible_child() 
-        term.feed(val.encode("utf-8"))
+        val2 = (val+"\n")
+        term.feed_child(val2, len(val2))
         return []        
 
     def command_clipboard_paste(self, tabno=-1):
@@ -217,11 +250,14 @@ class SocketServer:
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, 
             Gtk.STOCK_OK, Gtk.ResponseType.OK
         )
-        #dialog_window.set_default_size(300, 200)
-        #dialog_window.show_all()
-        #response = dialog_window.run()
 
     def command_popup(self, title, command=[]):
         popup = Gtk.Window(title=title)
         popup.show()
 
+    def command_maximize(self):
+        self.ide.maximize()
+        
+    def command_reset(self):
+        self.ide.reset()
+                

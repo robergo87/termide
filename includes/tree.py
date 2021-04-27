@@ -105,7 +105,7 @@ class Actions:
             if fullpath in opendirs:
                 retval += Actions.listdir(fullpath, indent+1)
         for fullpath in files:
-            basename = '\x1b[94m{}\x1b[0m'.format(os.path.basename(fullpath))
+            basename = '\x1b[93m{}\x1b[0m'.format(os.path.basename(fullpath))
             symbol = "-" if fullpath in opendirs else "+"
             retval.append("{};{} {}".format(fullpath, ind, basename))
         return retval
