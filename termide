@@ -19,7 +19,7 @@ ide = TermIDE()
 server = SocketServer(ide)
 server.start()
 
-#def load_defaults():
-#    ide.shell_exec( [os.path.join(ROOT_DIR, "templates", "default.sh")] ) 
-#GObject.timeout_add(100, load_defaults)
+def load_defaults():
+    ide.shell_exec( [os.path.join(ROOT_DIR, "templates", "default.sh")], False ) 
+GObject.timeout_add(100, load_defaults)
 Gtk.main()
