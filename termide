@@ -5,14 +5,21 @@ import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version('Vte', '2.91')
 
-from gi.repository import Gtk
+from gi.repository import Gtk,GObject
+from gi.repository import GLib
 
 from includes.api import SocketServer
 from includes.window import TermIDE
 from includes.util import ROOT_DIR
 
+GObject.threads_init()
+#Gtk.gdk.threads_init()
+
 ide = TermIDE()  
 server = SocketServer(ide)
 server.start()
-ide.shell_exec( [os.path.join(ROOT_DIR, "templates", "default.sh")] )
+
+#def load_defaults():
+#    ide.shell_exec( [os.path.join(ROOT_DIR, "templates", "default.sh")] ) 
+#GObject.timeout_add(100, load_defaults)
 Gtk.main()

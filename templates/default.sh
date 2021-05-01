@@ -1,5 +1,6 @@
 #!/bin/bash
 
+sleep 1
 termide bind Alt+Up termide move u
 termide bind Alt+Down termide move d
 termide bind Alt+Left termide move l

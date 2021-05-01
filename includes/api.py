@@ -12,6 +12,10 @@ from time import sleep
 
 from .util import PIPE_PATH, ROOT_DIR, bash, shlex_join, send_command
 
+gi.require_version("Gtk", "3.0")
+gi.require_version('Vte', '2.91')
+
+from gi.repository import GObject
 
 class SocketServer:
     def __init__(self, ide):
@@ -28,6 +32,23 @@ class SocketServer:
         self.server.close()
         os.remove(PIPE_PATH)
 
+    def comm_run(self, conn, comm_method, args):
+        try: 
+            if hasattr(self, comm_method):
+                retval = getattr(self, comm_method)(*args[1:])
+                retval = "\n".join(str(row) for row in retval) if retval else ""
+            else:
+                retval = "Command {} not found!".format(args[1])
+            conn.send(retval.encode("utf-8"))
+            conn.close()
+        except Exception as e:
+            import traceback
+            retval = [str(traceback.format_exc())]
+            retval = "\n".join(str(row) for row in retval) if retval else ""
+            conn.send(retval.encode("utf-8"))   
+            conn.close()
+        print("stop {}".format(comm_method))
+
     def run(self):
         while True:
             self.server.listen(1)
@@ -39,26 +60,9 @@ class SocketServer:
             if not len(args) or args[0] == "stop":
                 break
             comm_method = "command_{}".format(args[0])
-            try: 
-                if hasattr(self, comm_method):
-                    retval = getattr(self, comm_method)(*args[1:])
-                    retval = "\n".join(str(row) for row in retval) if retval else ""
-                    conn.send(retval.encode("utf-8"))
-                    conn.close()
-                else:
-                    print("{} start".format(comm_method))
-                    retval = getattr(self, comm_method+"_async")(*args[1:])
-                    def conn_close(retval):
-                        retval = "\n".join(str(row) for row in retval) if retval else ""
-                        conn.send(retval.encode("utf-8"))
-                        conn.close()
-                        print("{} end".format(comm_method))
-                    self.ide.update_tick(conn_close, [retval])
-            except Exception as e:
-                import traceback
-                retval = [str(traceback.format_exc())]
-                retval = "\n".join(str(row) for row in retval) if retval else ""
-                conn.send(retval.encode("utf-8"))   
+            print("start {}".format(comm_method))
+            GObject.idle_add(self.comm_run, conn, comm_method, args)
+            #self.comm_run(conn, comm_method, args)
         return False
               
     def start(self):
@@ -70,14 +74,14 @@ class SocketServer:
         self.ide.tabs[self.current_tab].curterm().grab_focus()
         return []
         
-    def command_split_async(self, direction="v", tabno=-1):
+    def command_split(self, direction="v", tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         tab.split(orient=direction)
         self.ide.recreate_tabs()
         tab.curterm().grab_focus()
         return []
 
-    def command_close_async(self, tabno=-1):
+    def command_close(self, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         tab.get_parent().remove_tab(tab)
         return []
@@ -143,7 +147,7 @@ class SocketServer:
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         tab.get_parent().resize_last(int(step_x), int(step_y))
         
-    def command_term_add_async(self, tabno=-1, title="default", command=None):
+    def command_term_add(self, tabno=-1, title="default", command=None):
         command_lst = json.loads(command) if command else []
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)]
         terminal = tab.add_terminal(title, commands=command_lst if command else None)
@@ -181,7 +185,7 @@ class SocketServer:
                 return [i] 
         return [-1]
     
-    def command_term_next_async(self, tabno=-1):
+    def command_term_next(self, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         termnum = self.command_term_num()[0]
         if termnum + 1 >= len(tab.terminals):
@@ -190,7 +194,7 @@ class SocketServer:
         self.command_term_select(termnum)
         return [termnum]
 
-    def command_term_prev_async(self, tabno=-1):
+    def command_term_prev(self, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         termnum = self.command_term_num()[0]
         if termnum <= 0:
@@ -203,7 +207,7 @@ class SocketServer:
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         return [term.title for term in tab.terminals]
 
-    def command_term_close_async(self, termnum=-1, tabno=-1):
+    def command_term_close(self, termnum=-1, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         term = (
             tab.terminals[int(termnum)] 
@@ -219,7 +223,7 @@ class SocketServer:
             term.set_font_scale(term.get_font_scale()+float(change))
         return [term.get_font_scale()]        
 
-    def command_term_set_scale_async(self, val=0, tabno=-1):
+    def command_term_set_scale(self, val=0, tabno=-1):
         tab = self.ide.tabs[self.current_tab if tabno == -1 else int(tabno)] 
         for term in tab.terminals:
             term.set_font_scale(float(val))
@@ -255,9 +259,16 @@ class SocketServer:
         popup = Gtk.Window(title=title)
         popup.show()
 
+    def command_cd(self, directory):
+        from .window import Terminal
+        Terminal.default_dir = directory
+        return []
+    
     def command_maximize(self):
         self.ide.maximize()
+        return []
         
     def command_reset(self):
         self.ide.reset()
-                
+        return []
+

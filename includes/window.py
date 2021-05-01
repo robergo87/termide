@@ -14,20 +14,23 @@ gi.require_version("Gtk", "3.0")
 gi.require_version('Vte', '2.91')
 
 from gi.repository import Gtk, Vte, Gdk 
-from gi.repository import GLib
+from gi.repository import GLib, GObject
 
 
 from .util import PIPE_PATH, ROOT_DIR, bash, shlex_join, send_command
 
 
 class Terminal(Vte.Terminal):
+    default_dir = os.getcwd()
+    
     def __init__(self, title, directory=None, commands = []):
         super().__init__()
         self.title = title
+        self.set_color_background(Gdk.RGBA(0.2, 0.2, 0.2, 1))
         self.set_clear_background(False)
         self.spawn_sync(
             Vte.PtyFlags.DEFAULT,
-            directory if directory else os.getcwd(),
+            directory if directory else self.default_dir,
             commands if commands else bash(), 
             [
                 "TERMIDE_PIPE_PATH={}".format(PIPE_PATH),
@@ -49,9 +52,12 @@ class Terminal(Vte.Terminal):
         self.prnt.tab_focused()
 
     def getcwd(self):
+        return self.default_dir
         try:
             return "/"+"/".join(self.get_current_directory_uri().split("/")[3:])
-        except:
+        except Exception as e:
+            print("Exception path")
+            print(e)
             return None
 
     def tick_cb(self, *args):
@@ -317,12 +323,18 @@ class TermIDE(Gtk.Window):
     def resize_last(self, step_x, step_y):
         pass
 
-    def shell_exec(self, action):
+    def shell_exec(self, action, wait=True):
         env = {
             "TERMIDE_PIPE_PATH": PIPE_PATH,
             "PATH": os.environ["PATH"] + os.pathsep + os.path.join(ROOT_DIR, "script")
         }
-        subprocess.run(action ,  env=env, close_fds=True)
+        if wait:
+            subprocess.run(action ,  env=env, close_fds=True)
+        else:
+            subprocess.Popen(
+                action ,  env=env, close_fds=False, 
+                stdin=None, stdout=None, stderr=None
+            )
              
     def event_keypress(self, widget, event):
         #decode keycode
@@ -340,7 +352,8 @@ class TermIDE(Gtk.Window):
         #execute action
         if keycode in self.keybinds:
             for action in self.keybinds[keycode]:
-                self.shell_exec(action)
+                #GObject.idle_add(self.shell_exec, action)
+                self.shell_exec(action, wait=False)
             return True
         
     def event_destroy(self, event=None):
@@ -360,7 +373,7 @@ class TermIDE(Gtk.Window):
     def tab_focused(self, curtabno):
         self.server.current_tab = curtabno
         for tabno, tab in enumerate(self.tabs):
-            tab.set_opacity(1 if curtabno == tabno else 0.7)
+            tab.curterm().set_clear_background(curtabno == tabno)
 
     def remove_tab(self, obj):
         self.event_destroy()
