@@ -72,12 +72,6 @@ class Actions:
 
     def action_alternative(path):
         fullpath = os.path.abspath(path.split(";")[0].strip())
-        if os.path.isdir(fullpath):
-            if fullpath not in opendirs:
-                opendirs.add(fullpath)
-            else:
-                opendirs.remove(fullpath)
-            return Actions.action_list()   
         if not cmd_default:
             return Actions.action_list()
         basename = os.path.basename(fullpath)

@@ -1,13 +1,12 @@
 #!/bin/bash
 
-sleep 1
 termide bind Alt+Up termide move u
 termide bind Alt+Down termide move d
 termide bind Alt+Left termide move l
 termide bind Alt+Right termide move r
 
-termide bind Control+Shift+V termide split v
-termide bind Control+Shift+H termide split h
+termide bind Alt+V termide split v
+termide bind Alt+H termide split h
 
 termide bind Alt+Comma termide term_prev
 termide bind Alt+Period termide term_next
