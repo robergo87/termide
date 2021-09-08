@@ -46,6 +46,7 @@ class Terminal(Vte.Terminal):
         self.add_tick_callback(self.tick_cb)
         
     def event_eof(self, event):
+        print("eof caught");
         self.prnt.rem_terminal(self.termno)
 
     def event_focus(self, *args):
@@ -113,14 +114,19 @@ class TermTabs(Gtk.Box):
         self.get_parent().tick_cb()
 
     def rem_terminal(self, termno):
+        print("rem_terminal", termno, self.tabno)
         term = self.terminals[termno]
         self.stack.remove(term)
         term.destroy()
         del self.terminals[termno]
+        for index, terminal in enumerate(self.terminals):
+            terminal.termno = index;
         if not self.terminals:
+            print("last terminal in tabs")
             self.get_parent().remove_tab(self)
         if len(self.terminals) <= 1:
             self.switcher.hide()
+        
                             
     def __init__(self, title=None, directory=None, commands=[]):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=2)

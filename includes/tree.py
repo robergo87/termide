@@ -78,6 +78,13 @@ class Actions:
         os.system(cmd_optional.format(path=fullpath, file=basename))         
         return Actions.action_list()
 
+    def rspaces(fullpath, indent):
+        retval = (
+            os.get_terminal_size()[0] - indent - 1 
+            - len(os.path.basename(fullpath))
+        )
+        retval = " " * retval if retval > 0 else ""
+        return retval
 
     def listdir(path, indent):
         files = []
@@ -95,13 +102,19 @@ class Actions:
         for fullpath in dirs:
             basename = '\x1b[92m{}\x1b[0m'.format(os.path.basename(fullpath))
             symbol = "-" if fullpath in opendirs else "+"
-            retval.append("{};{}{}{}".format(fullpath, ind, symbol, basename))
+            retval.append("{};{}{}{}{}".format(
+                fullpath, ind, symbol, basename, 
+                Actions.rspaces(fullpath, indent)
+            ))
             if fullpath in opendirs:
                 retval += Actions.listdir(fullpath, indent+1)
         for fullpath in files:
             basename = '\x1b[93m{}\x1b[0m'.format(os.path.basename(fullpath))
             symbol = "-" if fullpath in opendirs else "+"
-            retval.append("{};{} {}".format(fullpath, ind, basename))
+            retval.append("{};{} {}{}".format(
+                fullpath, ind, basename, 
+                Actions.rspaces(fullpath, indent)
+            ))
         return retval
         
     def action_list():

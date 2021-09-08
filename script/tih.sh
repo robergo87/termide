@@ -64,6 +64,12 @@ if [ "$1" = "fm" ]; then
 	$PDIR/includes/fm.py "$action" "$2"
 fi
 
+if [ "$1" = "start" ]; then
+	tplname=`ls $PDIR/templates | $PDIR/fzf/fzf/bin/fzf`
+	$PDIR/templates/$tplname
+fi
+
+
 if [ "$1" = "tpl" ]; then
     TPLPATH="$PDIR/templates/$2.sh"
     shift 2
